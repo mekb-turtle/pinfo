@@ -110,7 +110,6 @@ int main(int argc, char *argv[]) {
 						break;
 					}
 				}
-				break;
 			}
 
 			if (is_pid) { // parse the integer
@@ -163,10 +162,6 @@ int main(int argc, char *argv[]) {
 						continue;
 				} else {
 					switch (match_mode) {
-						case MATCH_NAME:
-							// match whole command name
-							if (strcmp(proc_info.cmd, argv[arg]) != 0) goto next_proc;
-							break;
 						case MATCH_SUBSTRING:
 							// match a substring of the command name
 							if (!strstr(proc_info.cmd, argv[arg])) goto next_proc;
@@ -185,6 +180,8 @@ int main(int argc, char *argv[]) {
 							}
 							break;
 						default:
+							// match whole command name
+							if (strcmp(proc_info.cmd, argv[arg]) != 0) goto next_proc;
 							break;
 					}
 				}
