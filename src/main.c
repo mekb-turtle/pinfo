@@ -11,29 +11,33 @@
 static struct option options_getopt[] = {
         {"help",    no_argument, 0, 'h'},
         {"version", no_argument, 0, 'V'},
+        {"all",     no_argument, 0, 'a'},
         {"name",    no_argument, 0, 'n'},
         {"pid",     no_argument, 0, 'p'},
         {"cmdline", no_argument, 0, 'c'},
         {"environ", no_argument, 0, 'e'},
+        {"info",    no_argument, 0, 'i'},
         {0,         0,           0, 0  }
 };
 
 int main(int argc, char *argv[]) {
 	bool invalid = false, force_name = false, force_pid = false;
-	bool show_cmdline = false, show_environ = false;
+	bool show_cmdline = false, show_environ = false, show_all = false, show_info = false;
 	int opt;
 
 	// argument handling
-	while ((opt = getopt_long(argc, argv, ":hVnpce", options_getopt, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, ":hVanpcei", options_getopt, NULL)) != -1) {
 		switch (opt) {
 			case 'h':
 				printf("Usage: %s [options]... <process name/ID>...\n", TARGET);
 				printf("-h --help: Shows help text\n");
 				printf("-V --version: Shows the version\n");
+				printf("-a --all: Show all processes\n");
 				printf("-n --name: Force match by process name\n");
 				printf("-p --pid: Force match by process ID\n");
 				printf("-c --cmdline: Show command line arguments\n");
 				printf("-e --environ: Show environment variables\n");
+				printf("-i --info: Show extra info\n");
 				return 0;
 			case 'V':
 				printf("%s %s\n", TARGET, VERSION);
@@ -41,34 +45,21 @@ int main(int argc, char *argv[]) {
 			default:
 				if (!invalid) {
 					switch (opt) {
-						case 'n':
-							if (force_name || force_pid) {
-								invalid = true;
-								break;
-							}
-							force_name = true;
-							break;
-						case 'p':
-							if (force_name || force_pid) {
-								invalid = true;
-								break;
-							}
-							force_pid = true;
-							break;
-						case 'c':
-							if (show_cmdline) {
-								invalid = true;
-								break;
-							}
-							show_cmdline = true;
-							break;
-						case 'e':
-							if (show_environ) {
-								invalid = true;
-								break;
-							}
-							show_environ = true;
-							break;
+#define BOOL_OPT(letter, name, invalid_condition) \
+	case letter:                                  \
+		if (invalid_condition) {                  \
+			invalid = true;                       \
+			break;                                \
+		}                                         \
+		name = true;                              \
+		break;
+						BOOL_OPT('a', show_all, show_all)
+						BOOL_OPT('n', force_name, force_name || force_pid)
+						BOOL_OPT('p', force_pid, force_name || force_pid)
+						BOOL_OPT('c', show_cmdline, show_cmdline)
+						BOOL_OPT('e', show_environ, show_environ)
+						BOOL_OPT('i', show_info, show_info)
+#undef BOOL_OPT
 						default:
 							invalid = true;
 							break;
@@ -78,7 +69,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if (optind >= argc || invalid)
+	if ((show_all ? (optind != argc) : (optind >= argc)) || invalid)
 		errx(1, "Invalid usage, try --help");
 
 	proc_t proc_info;
@@ -86,30 +77,33 @@ int main(int argc, char *argv[]) {
 
 	bool res = 0;
 
-	for (int arg = optind; arg < argc; arg++) {
+	for (int arg = optind; arg < argc || show_all; arg++) {
 		bool is_pid = force_pid;
-		if (!force_name) {
-			for (char *digit = argv[arg]; *digit; digit++) {
-				if (*digit < '0' || *digit > '9') {
-					if (force_pid) goto invalid_pid;
-					is_pid = false;
-					break;
-				}
-				is_pid = true;
-			}
-		}
-
 		pid_t pid = 0;
-		if (is_pid) {
-			errno = 0;
-			long pid_ = strtol(argv[arg], NULL, 10);
-			if (errno || pid_ < 0 || pid_ == LONG_MAX) {
-			invalid_pid:
-				fprintf(stderr, "Invalid PID: %s\n", argv[arg]);
-				res = 1;
-				continue;
+
+		if (!show_all) {
+			if (!force_name) {
+				for (char *digit = argv[arg]; *digit; digit++) {
+					if (*digit < '0' || *digit > '9') {
+						if (force_pid) goto invalid_pid;
+						is_pid = false;
+						break;
+					}
+					is_pid = true;
+				}
 			}
-			pid = pid_;
+
+			if (is_pid) {
+				errno = 0;
+				long pid_ = strtol(argv[arg], NULL, 10);
+				if (errno || pid_ < 0 || pid_ == LONG_MAX) {
+				invalid_pid:
+					fprintf(stderr, "Invalid PID: %s\n", argv[arg]);
+					res = 1;
+					continue;
+				}
+				pid = pid_;
+			}
 		}
 
 		bool found = false;
@@ -122,22 +116,27 @@ int main(int argc, char *argv[]) {
 			errx(1, "Failed to open proc");
 
 		while (readproc(proc, &proc_info)) {
-			if (is_pid) {
-				if (proc_info.tid != pid)
-					continue;
-			} else {
-				if (strcmp(proc_info.cmd, argv[arg]) != 0)
-					continue;
+			if (!show_all) {
+				if (is_pid) {
+					if (proc_info.tid != pid)
+						continue;
+				} else {
+					if (strcmp(proc_info.cmd, argv[arg]) != 0)
+						continue;
+				}
 			}
+
 			found = true;
 			printf("%s - ", proc_info.cmd);
-			printf("pid=%d ", proc_info.tid);
-			printf("ppid=%d ", proc_info.ppid);
-			printf("state=%c ", proc_info.state);
-			printf("uid=%d ", proc_info.euid);
-			printf("gid=%d ", proc_info.egid);
-			printf("priority=%ld ", proc_info.priority);
-			printf("nice=%ld", proc_info.nice);
+			printf("pid=%d", proc_info.tid);
+			if (show_info) {
+				printf(" ppid=%d", proc_info.ppid);
+				printf(" state=%c", proc_info.state);
+				printf(" uid=%d", proc_info.euid);
+				printf(" gid=%d", proc_info.egid);
+				printf(" priority=%ld", proc_info.priority);
+				printf(" nice=%ld", proc_info.nice);
+			}
 			printf("\n");
 			if (show_cmdline) {
 				printf("cmdline:");
@@ -162,6 +161,8 @@ int main(int argc, char *argv[]) {
 			if (is_pid) break;
 		}
 		closeproc(proc);
+
+		if (show_all) break;
 
 		if (!found) {
 			if (is_pid) {
