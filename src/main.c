@@ -11,17 +11,18 @@
 #include <pcre2.h>
 
 static struct option options_getopt[] = {
-        {"help",      no_argument, 0, 'h'},
-        {"version",   no_argument, 0, 'V'},
-        {"all",       no_argument, 0, 'a'},
-        {"name",      no_argument, 0, 'n'},
-        {"pid",       no_argument, 0, 'p'},
-        {"substring", no_argument, 0, 's'},
-        {"regex",     no_argument, 0, 'r'},
-        {"cmdline",   no_argument, 0, 'c'},
-        {"environ",   no_argument, 0, 'e'},
-        {"info",      no_argument, 0, 'i'},
-        {0,           0,           0, 0  }
+        {"help",        no_argument, 0, 'h'},
+        {"version",     no_argument, 0, 'V'},
+        {"all",         no_argument, 0, 'a'},
+        {"name",        no_argument, 0, 'n'},
+        {"pid",         no_argument, 0, 'p'},
+        {"substring",   no_argument, 0, 's'},
+        {"regex",       no_argument, 0, 'r'},
+        {"ignore-case", no_argument, 0, 'i'},
+        {"cmdline",     no_argument, 0, 'c'},
+        {"environ",     no_argument, 0, 'e'},
+        {"details",     no_argument, 0, 'd'},
+        {0,             0,           0, 0  }
 };
 
 int main(int argc, char *argv[]) {
@@ -34,11 +35,12 @@ int main(int argc, char *argv[]) {
 		MATCH_REGEX
 	} match_mode = MATCH_AUTO;
 	bool invalid = false;
-	bool show_cmdline = false, show_environ = false, show_info = false;
+	bool show_cmdline = false, show_environ = false, show_details = false;
+	bool case_insensitive = false;
 	int opt;
 
 	// argument handling
-	while ((opt = getopt_long(argc, argv, ":hVanpsrcei", options_getopt, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, ":hVanpsriced", options_getopt, NULL)) != -1) {
 		switch (opt) {
 			case 'h':
 				printf("Usage: %s [options]... <process name/ID>...\n", TARGET);
@@ -50,10 +52,11 @@ int main(int argc, char *argv[]) {
 				printf("-p --pid: Force matching by process ID\n");
 				printf("-s --substring: Match process by substring (assumes -n)\n");
 				printf("-r --regex: Match process by regular expression (PCRE, assumes -n)\n\n");
+				printf("-i --ignore-case: Case insensitive matching\n");
 				printf("Info options:\n");
 				printf("-c --cmdline: Show command line arguments\n");
 				printf("-e --environ: Show environment variables\n");
-				printf("-i --info: Show extra info\n\n");
+				printf("-d --details: Show extra details\n\n");
 				return 0;
 			case 'V':
 				printf("%s %s\n", TARGET, VERSION);
@@ -72,12 +75,13 @@ int main(int argc, char *argv[]) {
 #define all_match_options match_mode != MATCH_AUTO // these are mutually exclusive
 						OPT('a', match_mode = MATCH_ALL, all_match_options)
 						OPT('n', match_mode = MATCH_NAME, all_match_options)
-						OPT('p', match_mode = MATCH_PID, all_match_options)
+						OPT('p', match_mode = MATCH_PID, all_match_options || case_insensitive)
 						OPT('s', match_mode = MATCH_SUBSTRING, all_match_options)
 						OPT('r', match_mode = MATCH_REGEX, all_match_options)
+						OPT_BOOL('i', case_insensitive, match_mode == MATCH_PID)
 						OPT_BOOL('c', show_cmdline, false)
 						OPT_BOOL('e', show_environ, false)
-						OPT_BOOL('i', show_info, false)
+						OPT_BOOL('d', show_details, false)
 #undef all_match_options
 #undef OPT
 						default:
@@ -127,7 +131,9 @@ int main(int argc, char *argv[]) {
 			if (match_mode == MATCH_REGEX) {
 				int errorcode;
 				PCRE2_SIZE erroroffset;
-				regex = pcre2_compile((PCRE2_SPTR) argv[arg], PCRE2_ZERO_TERMINATED, 0, &errorcode, &erroroffset, NULL);
+				int regex_flags = 0;
+				if (case_insensitive) regex_flags |= PCRE2_CASELESS;
+				regex = pcre2_compile((PCRE2_SPTR) argv[arg], PCRE2_ZERO_TERMINATED, regex_flags, &errorcode, &erroroffset, NULL);
 				if (!regex) {
 					PCRE2_UCHAR error[256];
 					pcre2_get_error_message(errorcode, error, sizeof(error));
@@ -164,7 +170,11 @@ int main(int argc, char *argv[]) {
 					switch (match_mode) {
 						case MATCH_SUBSTRING:
 							// match a substring of the command name
-							if (!strstr(proc_info.cmd, argv[arg])) goto next_proc;
+							if (case_insensitive) {
+								if (!strcasestr(proc_info.cmd, argv[arg])) goto next_proc;
+							} else {
+								if (!strstr(proc_info.cmd, argv[arg])) goto next_proc;
+							}
 							break;
 						case MATCH_REGEX:
 							// match the command name by a regular expression
@@ -181,7 +191,11 @@ int main(int argc, char *argv[]) {
 							break;
 						default:
 							// match whole command name
-							if (strcmp(proc_info.cmd, argv[arg]) != 0) goto next_proc;
+							if (case_insensitive) {
+								if (strcasecmp(proc_info.cmd, argv[arg]) != 0) goto next_proc;
+							} else {
+								if (strcmp(proc_info.cmd, argv[arg]) != 0) goto next_proc;
+							}
 							break;
 					}
 				}
@@ -190,7 +204,7 @@ int main(int argc, char *argv[]) {
 			found = true;
 			printf("%s - ", proc_info.cmd);
 			printf("pid=%d", proc_info.tid);
-			if (show_info) {
+			if (show_details) {
 				printf(" ppid=%d", proc_info.ppid);
 				printf(" state=%c", proc_info.state);
 				printf(" uid=%d", proc_info.euid);
@@ -238,7 +252,9 @@ int main(int argc, char *argv[]) {
 						fprintf(stderr, " by substring '%s'\n", argv[arg]);
 						break;
 					case MATCH_REGEX:
-						fprintf(stderr, " by regular expression /%s/\n", argv[arg]);
+						fprintf(stderr, " by regular expression /%s/", argv[arg]);
+						if (case_insensitive) fprintf(stderr, "i");
+						fprintf(stderr, "\n");
 						break;
 					default:
 						fprintf(stderr, " by name '%s'\n", argv[arg]);
