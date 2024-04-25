@@ -44,19 +44,25 @@ int main(int argc, char *argv[]) {
 		switch (opt) {
 			case 'h':
 				printf("Usage: %s [options]... <process name/ID>...\n", TARGET);
+				printf("list process information\n");
+				printf("\n");
+				printf("Options:\n");
 				printf("-h --help: Shows help text\n");
-				printf("-V --version: Shows the version\n\n");
+				printf("-V --version: Shows the version\n");
+				printf("\n");
 				printf("Matching options:\n");
 				printf("-a --all: Show all processes\n");
 				printf("-n --name: Force matching by process name\n");
 				printf("-p --pid: Force matching by process ID\n");
 				printf("-s --substring: Match process by substring (assumes -n)\n");
-				printf("-r --regex: Match process by regular expression (PCRE, assumes -n)\n\n");
+				printf("-r --regex: Match process by regular expression (PCRE, assumes -n)\n");
 				printf("-i --ignore-case: Case insensitive matching\n");
+				printf("\n");
 				printf("Info options:\n");
 				printf("-c --cmdline: Show command line arguments\n");
 				printf("-e --environ: Show environment variables\n");
-				printf("-d --details: Show extra details\n\n");
+				printf("-d --details: Show extra details\n");
+				printf("\n");
 				return 0;
 			case 'V':
 				printf("%s %s\n", TARGET, VERSION);
