@@ -43,7 +43,7 @@ int main(int argc, char *argv[]) {
 	while ((opt = getopt_long(argc, argv, ":hVanpsriced", options_getopt, NULL)) != -1) {
 		switch (opt) {
 			case 'h':
-				printf("Usage: %s [options]... <process name/ID>...\n", TARGET);
+				printf("Usage: %s [options]... <process name/ID>...\n", PROJECT_NAME);
 				printf("list process information\n");
 				printf("\n");
 				printf("Options:\n");
@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
 				printf("\n");
 				return 0;
 			case 'V':
-				printf("%s %s\n", TARGET, VERSION);
+				printf("%s %s\n", PROJECT_NAME, PROJECT_VERSION);
 				return 0;
 			default:
 				if (!invalid) {

@@ -1,7 +1,0 @@
-TARGET = pinfo
-VERSION = 1.0.0
-
-LDLIBS += -lprocps -lpcre2-8
-EXTRA_SRC_FILES =
-EXTRA_BINARY_FILES =
-CFLAGS += -Wall
